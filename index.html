@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Puzzle·Cam — Hand Capture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg: #0b0d10;
+  --panel: #14171c;
+  --panel-2: #1a1e24;
+  --line: #262b32;
+  --text: #edebe4;
+  --text-dim: #8a9099;
+  --amber: #f2b705;
+  --amber-dim: #7a5f0b;
+  --teal: #4be3c8;
+  --red: #e35b4b;
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
+  --sans: 'Inter', system-ui, sans-serif;
+}
+
+*{ box-sizing: border-box; }
+
+html,body{
+  margin:0; padding:0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  height:100%;
+}
+
+.hidden{ display:none !important; }
+
+.btn{
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color .15s ease, transform .1s ease, background .15s ease;
+}
+.btn:hover{ border-color: var(--amber); transform: translateY(-1px); }
+.btn:active{ transform: translateY(0); }
+.btn-primary{ background: var(--amber); color: #1a1200; border-color: var(--amber); font-weight:600; }
+.btn-primary:hover{ background:#ffcb2e; }
+.btn-outline{ background: transparent; }
+.btn-ghost{ background: transparent; border-color: var(--text-dim); }
+
+/* ---------- topbar ---------- */
+.topbar{
+  display:flex; align-items:center; justify-content:space-between;
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+.brand{ display:flex; align-items:baseline; gap:10px; font-family: var(--mono); }
+.brand-mark{ color: var(--amber); }
+.brand-name{ font-weight:700; letter-spacing:.08em; }
+.brand-tag{ color: var(--text-dim); font-size: 11px; letter-spacing:.12em; }
+
+.status{ display:flex; align-items:center; gap:8px; font-family: var(--mono); font-size:12px; color: var(--text-dim); }
+.status-dot{
+  width:8px; height:8px; border-radius:50%;
+  background: var(--text-dim);
+  box-shadow: 0 0 0 3px rgba(255,255,255,.05);
+}
+.status-dot.live{ background: var(--teal); box-shadow: 0 0 0 4px rgba(75,227,200,.15); }
+.status-dot.busy{ background: var(--amber); box-shadow: 0 0 0 4px rgba(242,183,5,.18); }
+.status-dot.done{ background: #7ce07c; box-shadow: 0 0 0 4px rgba(124,224,124,.18); }
+.status-dot.err{ background: var(--red); box-shadow: 0 0 0 4px rgba(227,91,75,.18); }
+
+/* ---------- layout ---------- */
+.stage-wrap{
+  display:grid;
+  grid-template-columns: minmax(0,1fr) 320px;
+  gap: 20px;
+  padding: 20px 24px 32px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+@media (max-width: 860px){
+  .stage-wrap{ grid-template-columns: 1fr; }
+}
+
+.stage{ display:flex; flex-direction:column; gap:12px; }
+
+.stage-frame{
+  position:relative;
+  width:100%;
+  aspect-ratio: 4/3;
+  background:#000;
+  border-radius: 14px;
+  overflow:hidden;
+  border: 3px solid var(--amber);
+  box-shadow: 0 0 0 1px rgba(242,183,5,.15), 0 20px 60px rgba(0,0,0,.5);
+}
+
+#webcam{ display:none; }
+
+#sceneCanvas{
+  position:absolute; inset:0;
+  width:100%; height:100%;
+}
+
+.overlay{
+  position:absolute; inset:0;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap: 14px;
+  background: rgba(11,13,16,.92);
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--text-dim);
+  text-align:center;
+  padding: 24px;
+}
+.overlay.error p{ color: var(--red); }
+
+.loader-ring{
+  width: 34px; height:34px;
+  border-radius:50%;
+  border: 3px solid var(--line);
+  border-top-color: var(--amber);
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin{ to{ transform: rotate(360deg); } }
+
+.credit-badge{
+  position:absolute; top:10px; left:50%; transform: translateX(-50%);
+  z-index: 5;
+  background: rgba(11,13,16,.65);
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: .06em;
+  padding: 4px 10px;
+  border-radius: 999px;
+  pointer-events: none;
+}
+
+.hint-bar{
+  position:absolute; left:50%; bottom:16px; transform: translateX(-50%);
+  background: rgba(11,13,16,.75);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: .02em;
+  padding: 8px 14px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.progress-row{
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+}
+.progress-badge{
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--amber);
+  border: 1px solid var(--amber-dim);
+  background: rgba(242,183,5,.08);
+  padding: 8px 12px;
+  border-radius: 8px;
+}
+
+/* ---------- side panel ---------- */
+.side-panel{ display:flex; flex-direction:column; gap:16px; }
+.panel-block{
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px;
+}
+.panel-block h2{
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin: 0 0 10px;
+  display:flex; align-items:center; gap:8px;
+}
+.count-chip{
+  background: var(--panel-2);
+  border:1px solid var(--line);
+  color: var(--text);
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 999px;
+}
+.steps{ margin:0; padding-left: 18px; display:flex; flex-direction:column; gap:8px; font-size: 13px; line-height:1.45; color: var(--text); }
+.steps b{ color: var(--amber); }
+
+.gallery-block .btn{ width:100%; margin-top:10px; }
+.gallery-strip{
+  display:grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap:8px;
+}
+.gallery-strip img{
+  width:100%; aspect-ratio:1; object-fit:cover;
+  border-radius:6px; border:1px solid var(--line);
+}
+.gallery-empty{ font-size:12px; color: var(--text-dim); margin: 4px 0 0; }
+.strip-msg{ font-size:12px; color: var(--teal); margin: 8px 0 0; text-align:center; }
+
+</style>
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">◆</span>
+      <span class="brand-name">PUZZLE·CAM</span>
+      <span class="brand-tag">HAND-FRAME CAPTURE</span>
+    </div>
+    <div class="status">
+      <span id="statusDot" class="status-dot"></span>
+      <span id="statusText" class="status-text">Starting camera…</span>
+    </div>
+  </header>
+
+  <main class="stage-wrap">
+
+    <section class="stage">
+      <div class="stage-frame" id="stageFrame">
+        <span class="credit-badge">Made unofficially for ihsan</span>
+        <video id="webcam" playsinline autoplay muted></video>
+        <canvas id="sceneCanvas"></canvas>
+
+        <div id="loadingOverlay" class="overlay">
+          <div class="loader-ring"></div>
+          <p id="loaderText">Requesting camera access…</p>
+          <button id="loaderRetry" class="btn btn-ghost hidden">Retry</button>
+        </div>
+
+        <div id="errorBanner" class="overlay error hidden">
+          <p id="errorText">We couldn't access the camera.</p>
+          <button id="errorRetry" class="btn btn-ghost">Retry</button>
+        </div>
+
+        <div id="hintBar" class="hint-bar hidden">
+          <span id="hintText">Form a rectangle with both hands and hold to capture</span>
+        </div>
+      </div>
+
+      <div class="progress-row">
+        <div id="progressBadge" class="progress-badge hidden">
+          <span id="progressText">0 / 9 pieces placed</span>
+        </div>
+        <button id="resetAllBtn" class="btn btn-outline hidden">Reset all</button>
+      </div>
+    </section>
+
+    <aside class="side-panel">
+      <div class="panel-block">
+        <h2>How it works</h2>
+        <ol class="steps">
+          <li><b>Form a frame</b> with both hands (thumb + index in an "L" shape) and hold it in front of the camera to take the photo.</li>
+          <li>The photo is cut into pieces and scattered across the screen.</li>
+          <li><b>Pinch on a piece</b> with either hand to grab it, move it, and release it near its spot to snap it in.</li>
+        </ol>
+      </div>
+
+      <div class="panel-block gallery-block">
+        <h2>Completed puzzles <span id="galleryCount" class="count-chip">0</span></h2>
+        <div id="galleryStrip" class="gallery-strip"></div>
+        <p id="galleryEmpty" class="gallery-empty">Your completed puzzles will appear here.</p>
+        <button id="downloadStripBtn" class="btn btn-primary hidden">Download strip</button>
+        <p id="stripCompletedMsg" class="strip-msg hidden">Strip downloaded!</p>
+      </div>
+    </aside>
+
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+  <script>
+// ============================================================
+// PUZZLE·CAM — capture a photo and solve a puzzle with your hands
+// Uses MediaPipe Hands for real-time hand landmark tracking.
+//
+// Capture gesture: form an "L" corner with each hand (thumb + index)
+// and hold both hands apart like framing a shot in a viewfinder.
+// Solve gesture: pinch (thumb+index) on a piece to grab it, move,
+// release near its home cell to snap it in. Works with either hand,
+// or both hands at once for two-piece solving.
+// ============================================================
+
+// ---------- standard MediaPipe Hands connections (21 landmarks) ----------
+const HAND_CONNECTIONS = [
+  [0, 1], [1, 2], [2, 3], [3, 4],
+  [0, 5], [5, 6], [6, 7], [7, 8],
+  [5, 9], [9, 10], [10, 11], [11, 12],
+  [9, 13], [13, 14], [14, 15], [15, 16],
+  [13, 17], [17, 18], [18, 19], [19, 20],
+  [0, 17],
+];
+
+// ---------- tunables ----------
+const GRID_COLS = 3;
+const GRID_ROWS = 3;
+const CAPTURE_HOLD_MS = 900;
+
+// two-hand "frame" (viewfinder) capture gesture
+const FRAME_ANGLE_MIN_DEG = 35;   // thumb/index must open at least this much (an "L", not a pinch)
+const FRAME_ANGLE_MAX_DEG = 150;  // ...but not fully flat/splayed
+const FRAME_MIN_SPREAD = 0.30;    // hands' index tips must be at least this fraction of canvas width apart
+
+// single-hand pinch (used to grab/drag puzzle pieces)
+const PINCH_ON = 0.16;
+const PINCH_OFF = 0.24;
+const SNAP_FRACTION = 0.42; // fraction of a cell's size counted as "close enough" to snap
+const DEBUG_GESTURES = true; // shows live gesture readouts so you can calibrate
+
+// ---------- DOM ----------
+const videoEl = document.getElementById('webcam');
+const canvas = document.getElementById('sceneCanvas');
+const ctx = canvas.getContext('2d');
+
+const statusDot = document.getElementById('statusDot');
+const statusText = document.getElementById('statusText');
+const loadingOverlay = document.getElementById('loadingOverlay');
+const loaderText = document.getElementById('loaderText');
+const loaderRetry = document.getElementById('loaderRetry');
+const errorBanner = document.getElementById('errorBanner');
+const errorText = document.getElementById('errorText');
+const errorRetry = document.getElementById('errorRetry');
+const hintBar = document.getElementById('hintBar');
+const hintText = document.getElementById('hintText');
+
+const progressBadge = document.getElementById('progressBadge');
+const progressText = document.getElementById('progressText');
+const galleryStrip = document.getElementById('galleryStrip');
+const galleryEmpty = document.getElementById('galleryEmpty');
+const galleryCount = document.getElementById('galleryCount');
+const downloadStripBtn = document.getElementById('downloadStripBtn');
+const resetAllBtn = document.getElementById('resetAllBtn');
+const stripCompletedMsg = document.getElementById('stripCompletedMsg');
+
+// ---------- app state ----------
+let appState = 'loading'; // loading | tracking | puzzle | solved
+let puzzle = null;        // built on capture
+let solvedPuzzles = [];   // dataURLs for the gallery strip
+
+// per-hand runtime state, keyed by MediaPipe's handedness label ('Left' | 'Right')
+// so identity stays stable across frames even though array order can flicker.
+let handStates = {};      // { Left: {...}, Right: {...} }
+let frameGestureActive = false;
+let frameHoldStart = null;
+let lastFrameDebug = null; // {angles:[a,b], spread} for the debug readout
+
+// ---------- canvas sizing ----------
+function resizeCanvas() {
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width;
+  canvas.height = rect.height;
+}
+window.addEventListener('resize', resizeCanvas);
+
+// ---------- status helpers ----------
+function setStatus(kind, text) {
+  statusDot.className = 'status-dot' + (kind ? ' ' + kind : '');
+  statusText.textContent = text;
+}
+
+function setHint(text) {
+  if (!text) { hintBar.classList.add('hidden'); return; }
+  hintText.textContent = text;
+  hintBar.classList.remove('hidden');
+}
+
+// ---------- MediaPipe Hands setup ----------
+const hands = new Hands({
+  locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
+});
+hands.setOptions({
+  maxNumHands: 2,
+  modelComplexity: 1,
+  minDetectionConfidence: 0.7,
+  minTrackingConfidence: 0.6,
+});
+hands.onResults(onResults);
+
+let camera = null;
+
+function startCamera() {
+  loadingOverlay.classList.remove('hidden');
+  errorBanner.classList.add('hidden');
+  loaderText.textContent = 'Requesting camera access…';
+  loaderRetry.classList.add('hidden');
+
+  camera = new Camera(videoEl, {
+    onFrame: async () => {
+      await hands.send({ image: videoEl });
+    },
+    width: 640,
+    height: 480,
+  });
+
+  camera.start()
+    .then(() => {
+      resizeCanvas();
+      loadingOverlay.classList.add('hidden');
+      appState = 'tracking';
+      setStatus('live', 'Looking for both hands…');
+      setHint('Form a rectangle with both hands (thumb + index) and hold to capture');
+    })
+    .catch((err) => {
+      console.error(err);
+      showCameraError("We couldn't access the camera. Check your browser permissions.");
+    });
+}
+
+function showCameraError(msg) {
+  loadingOverlay.classList.add('hidden');
+  errorBanner.classList.remove('hidden');
+  errorText.textContent = msg;
+  setStatus('err', 'No camera access');
+}
+
+loaderRetry.addEventListener('click', startCamera);
+errorRetry.addEventListener('click', startCamera);
+
+// ---------- geometry helpers ----------
+function dist(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function angleBetweenDeg(v1, v2) {
+  const dot = v1.x * v2.x + v1.y * v2.y;
+  const m1 = Math.hypot(v1.x, v1.y) || 1e-6;
+  const m2 = Math.hypot(v2.x, v2.y) || 1e-6;
+  const cos = Math.max(-1, Math.min(1, dot / (m1 * m2)));
+  return Math.acos(cos) * (180 / Math.PI);
+}
+
+// hand-scale-invariant pinch distance: normalize by wrist->middle_mcp span
+function pinchDistance(landmarks) {
+  const thumbTip = landmarks[4];
+  const indexTip = landmarks[8];
+  const wrist = landmarks[0];
+  const middleMcp = landmarks[9];
+  const scale = dist(wrist, middleMcp) || 1;
+  return dist(thumbTip, indexTip) / scale;
+}
+
+function toCanvasPoint(lm) {
+  // mirror horizontally to match the mirrored video draw
+  return {
+    x: (1 - lm.x) * canvas.width,
+    y: lm.y * canvas.height,
+  };
+}
+
+// "L-corner" shape of a hand: angle at the wrist between the thumb and
+// index directions. A tight pinch is near 0°, a flat open palm can be
+// large; framing an "L" with thumb and index sits in the middle range.
+function cornerAngleDeg(landmarks) {
+  const wrist = landmarks[0];
+  const thumbTip = landmarks[4];
+  const indexTip = landmarks[8];
+  const v1 = { x: thumbTip.x - wrist.x, y: thumbTip.y - wrist.y };
+  const v2 = { x: indexTip.x - wrist.x, y: indexTip.y - wrist.y };
+  return angleBetweenDeg(v1, v2);
+}
+
+// ============================================================
+// MAIN PER-FRAME CALLBACK
+// ============================================================
+function onResults(results) {
+  if (canvas.width === 0) resizeCanvas();
+
+  const rawList = results.multiHandLandmarks || [];
+  const handedness = results.multiHandedness || [];
+
+  // pair landmarks with a stable label ('Left' / 'Right') from MediaPipe
+  const present = rawList.map((landmarks, i) => ({
+    label: (handedness[i] && handedness[i].label) || `hand${i}`,
+    landmarks,
+  }));
+
+  syncHandStates(present);
+
+  if (appState === 'tracking') {
+    updateFrameGesture(present);
+  } else if (appState === 'puzzle') {
+    updatePuzzleHands(present);
+  }
+
+  render(present);
+}
+
+// keep a persistent per-hand state object across frames, keyed by handedness
+function syncHandStates(present) {
+  const presentLabels = new Set(present.map(h => h.label));
+
+  // drop hands that left the frame; release anything they were dragging
+  Object.keys(handStates).forEach((label) => {
+    if (!presentLabels.has(label)) {
+      const st = handStates[label];
+      if (st.dragTileId != null) releaseTile(st);
+      delete handStates[label];
+    }
+  });
+
+  present.forEach(({ label, landmarks }) => {
+    if (!handStates[label]) {
+      handStates[label] = {
+        isPinching: false,
+        dragTileId: null,
+        dragOffset: { x: 0, y: 0 },
+        point: null,
+      };
+    }
+    const st = handStates[label];
+    const thumbTip = toCanvasPoint(landmarks[4]);
+    const indexTip = toCanvasPoint(landmarks[8]);
+    st.point = { x: (thumbTip.x + indexTip.x) / 2, y: (thumbTip.y + indexTip.y) / 2 };
+    st.landmarks = landmarks;
+  });
+}
+
+// ---------- two-hand "frame" capture gesture ----------
+function updateFrameGesture(present) {
+  let active = false;
+  let debug = null;
+
+  if (present.length >= 2) {
+    const [h0, h1] = present;
+    const a0 = cornerAngleDeg(h0.landmarks);
+    const a1 = cornerAngleDeg(h1.landmarks);
+    const p0 = toCanvasPoint(h0.landmarks[8]);
+    const p1 = toCanvasPoint(h1.landmarks[8]);
+    const spread = dist(p0, p1) / canvas.width;
+
+    const shapesOk = [a0, a1].every(a => a > FRAME_ANGLE_MIN_DEG && a < FRAME_ANGLE_MAX_DEG);
+    const spreadOk = spread > FRAME_MIN_SPREAD;
+    active = shapesOk && spreadOk;
+    debug = { angles: [a0, a1], spread, shapesOk, spreadOk };
+  }
+  lastFrameDebug = debug;
+
+  const was = frameGestureActive;
+  frameGestureActive = active;
+  if (active && !was) frameHoldStart = performance.now();
+  if (!active) frameHoldStart = null;
+}
+
+// ---------- per-hand pinch grab/drag while solving ----------
+function updatePuzzleHands(present) {
+  present.forEach(({ label }) => {
+    const st = handStates[label];
+    if (!st) return;
+    const pd = pinchDistance(st.landmarks);
+    st.pinchDistance = pd;
+    const was = st.isPinching;
+    if (!st.isPinching && pd < PINCH_ON) st.isPinching = true;
+    else if (st.isPinching && pd > PINCH_OFF) st.isPinching = false;
+
+    if (st.isPinching && !was) tryGrabTile(st);
+    if (!st.isPinching && was) releaseTile(st);
+    if (st.isPinching && st.dragTileId != null) updateDrag(st);
+  });
+}
+
+// ============================================================
+// RENDER
+// ============================================================
+function render(present) {
+  ctx.save();
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // mirrored video frame as background
+  ctx.save();
+  ctx.translate(canvas.width, 0);
+  ctx.scale(-1, 1);
+  if (videoEl.readyState >= 2) {
+    drawCover(videoEl, canvas.width, canvas.height);
+  } else {
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+  ctx.restore();
+
+  if (appState === 'tracking') {
+    renderTrackingUI(present);
+  } else if (appState === 'puzzle' || appState === 'solved') {
+    renderPuzzle();
+  }
+
+  present.forEach(h => drawSkeleton(h.landmarks));
+
+  if (appState === 'puzzle' || appState === 'solved') {
+    Object.values(handStates).forEach(drawHandCursor);
+  }
+
+  ctx.restore();
+  updateStatusLine(present);
+}
+
+function drawCover(source, w, h) {
+  const sw = source.videoWidth || source.width;
+  const sh = source.videoHeight || source.height;
+  if (!sw || !sh) return;
+  const scale = Math.max(w / sw, h / sh);
+  const dw = sw * scale, dh = sh * scale;
+  const dx = (w - dw) / 2, dy = (h - dh) / 2;
+  ctx.drawImage(source, dx, dy, dw, dh);
+}
+
+function drawSkeleton(landmarks) {
+  ctx.save();
+  ctx.strokeStyle = 'rgba(75, 227, 200, 0.9)';
+  ctx.lineWidth = 2;
+  HAND_CONNECTIONS.forEach(([a, b]) => {
+    const pa = toCanvasPoint(landmarks[a]);
+    const pb = toCanvasPoint(landmarks[b]);
+    ctx.beginPath();
+    ctx.moveTo(pa.x, pa.y);
+    ctx.lineTo(pb.x, pb.y);
+    ctx.stroke();
+  });
+  ctx.fillStyle = '#f2b705';
+  landmarks.forEach((lm) => {
+    const p = toCanvasPoint(lm);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.restore();
+}
+
+function drawHandCursor(st) {
+  if (!st.point) return;
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(st.point.x, st.point.y, st.isPinching ? 10 : 7, 0, Math.PI * 2);
+  ctx.strokeStyle = st.isPinching ? '#f2b705' : 'rgba(237,235,228,0.8)';
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+
+  if (DEBUG_GESTURES && st.pinchDistance != null) {
+    ctx.font = '12px monospace';
+    ctx.fillStyle = st.isPinching ? '#f2b705' : 'rgba(237,235,228,0.85)';
+    ctx.textAlign = 'left';
+    ctx.fillText(`pinch: ${st.pinchDistance.toFixed(3)} (on <${PINCH_ON})`, st.point.x + 16, st.point.y - 16);
+  }
+  ctx.restore();
+}
+
+function renderTrackingUI(present) {
+  ctx.save();
+  ctx.strokeStyle = 'rgba(242,183,5,0.35)';
+  ctx.lineWidth = 4;
+  ctx.strokeRect(6, 6, canvas.width - 12, canvas.height - 12);
+  ctx.restore();
+
+  // draw the "viewfinder" rectangle between the two index fingertips, if present
+  if (present.length >= 2) {
+    const p0 = toCanvasPoint(present[0].landmarks[8]);
+    const p1 = toCanvasPoint(present[1].landmarks[8]);
+    const x = Math.min(p0.x, p1.x), y = Math.min(p0.y, p1.y);
+    const w = Math.abs(p0.x - p1.x), h = Math.abs(p0.y - p1.y);
+
+    ctx.save();
+    ctx.strokeStyle = frameGestureActive ? '#f2b705' : 'rgba(237,235,228,0.5)';
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([8, 6]);
+    ctx.strokeRect(x, y, w, h);
+    ctx.setLineDash([]);
+    ctx.restore();
+
+    if (DEBUG_GESTURES && lastFrameDebug) {
+      ctx.save();
+      ctx.font = '12px monospace';
+      ctx.fillStyle = frameGestureActive ? '#f2b705' : 'rgba(237,235,228,0.85)';
+      ctx.textAlign = 'left';
+      const d = lastFrameDebug;
+      ctx.fillText(
+        `angles: ${d.angles[0].toFixed(0)}° / ${d.angles[1].toFixed(0)}° (need ${FRAME_ANGLE_MIN_DEG}-${FRAME_ANGLE_MAX_DEG}°)  spread: ${(d.spread * 100).toFixed(0)}% (need >${FRAME_MIN_SPREAD * 100}%)`,
+        12, canvas.height - 14
+      );
+      ctx.restore();
+    }
+
+    // hold-progress ring at the midpoint
+    if (frameHoldStart) {
+      const mid = { x: (p0.x + p1.x) / 2, y: (p0.y + p1.y) / 2 };
+      const t = Math.min(1, (performance.now() - frameHoldStart) / CAPTURE_HOLD_MS);
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(mid.x, mid.y, 22, -Math.PI / 2, -Math.PI / 2 + t * Math.PI * 2);
+      ctx.strokeStyle = '#f2b705';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+      ctx.restore();
+      if (t >= 1) {
+        frameHoldStart = null;
+        capturePhoto();
+      }
+    }
+  }
+}
+
+// ============================================================
+// CAPTURE → build puzzle
+// ============================================================
+function capturePhoto() {
+  const size = Math.min(canvas.width, canvas.height);
+  const off = document.createElement('canvas');
+  off.width = size;
+  off.height = size;
+  const octx = off.getContext('2d');
+  const sx = (canvas.width - size) / 2;
+  const sy = (canvas.height - size) / 2;
+  octx.drawImage(canvas, sx, sy, size, size, 0, 0, size, size);
+
+  buildPuzzle(off);
+  appState = 'puzzle';
+  setHint('Pinch a piece, move it, and release it near its spot');
+  progressBadge.classList.remove('hidden');
+  resetAllBtn.classList.remove('hidden');
+  updateProgressText();
+}
+
+function buildPuzzle(sourceCanvas) {
+  const boardSize = Math.min(canvas.width, canvas.height) * 0.62;
+  const boardX = (canvas.width - boardSize) / 2;
+  const boardY = (canvas.height - boardSize) / 2;
+  const cell = boardSize / GRID_COLS;
+  const srcCell = sourceCanvas.width / GRID_COLS;
+
+  const tiles = [];
+  let id = 0;
+  for (let r = 0; r < GRID_ROWS; r++) {
+    for (let c = 0; c < GRID_COLS; c++) {
+      tiles.push({
+        id: id++,
+        col: c, row: r,
+        sx: c * srcCell, sy: r * srcCell, sw: srcCell, sh: srcCell,
+        w: cell, h: cell,
+        x: 0, y: 0,
+        placed: false,
+      });
+    }
+  }
+  scatterTiles(tiles, cell);
+
+  puzzle = { sourceCanvas, boardX, boardY, boardSize, cell, tiles, total: tiles.length, solved: 0 };
+}
+
+function scatterTiles(tiles, cell) {
+  const margin = cell * 0.6;
+  tiles.forEach((t) => {
+    const zone = Math.floor(Math.random() * 3);
+    let x, y;
+    if (zone === 0) {
+      x = margin * 0.2;
+      y = margin * 0.2 + Math.random() * (canvas.height - cell - margin * 0.4);
+    } else if (zone === 1) {
+      x = canvas.width - cell - margin * 0.2;
+      y = margin * 0.2 + Math.random() * (canvas.height - cell - margin * 0.4);
+    } else {
+      x = margin * 0.2 + Math.random() * (canvas.width - cell - margin * 0.4);
+      y = canvas.height - cell - margin * 0.2;
+    }
+    t.x = x;
+    t.y = y;
+  });
+}
+
+// ============================================================
+// PUZZLE RENDER + DRAG LOGIC
+// ============================================================
+function renderPuzzle() {
+  const p = puzzle;
+  if (!p) return;
+
+  ctx.save();
+  ctx.strokeStyle = 'rgba(237,235,228,0.35)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(p.boardX, p.boardY, p.boardSize, p.boardSize);
+  for (let r = 0; r < GRID_ROWS; r++) {
+    for (let c = 0; c < GRID_COLS; c++) {
+      const cx = p.boardX + c * p.cell;
+      const cy = p.boardY + r * p.cell;
+      ctx.strokeStyle = 'rgba(237,235,228,0.15)';
+      ctx.strokeRect(cx, cy, p.cell, p.cell);
+    }
+  }
+  ctx.restore();
+
+  const draggedIds = new Set(Object.values(handStates).map(s => s.dragTileId).filter(id => id != null));
+  const unplaced = p.tiles.filter(t => !t.placed && !draggedIds.has(t.id));
+  const placed = p.tiles.filter(t => t.placed);
+  const dragging = p.tiles.filter(t => draggedIds.has(t.id));
+
+  [...unplaced, ...placed].forEach(t => drawTile(t, false));
+  dragging.forEach(t => drawTile(t, true));
+}
+
+function drawTile(t, isDragging) {
+  const p = puzzle;
+  ctx.save();
+  if (isDragging) {
+    ctx.shadowColor = 'rgba(242,183,5,0.6)';
+    ctx.shadowBlur = 14;
+  }
+  ctx.drawImage(p.sourceCanvas, t.sx, t.sy, t.sw, t.sh, t.x, t.y, t.w, t.h);
+  ctx.strokeStyle = t.placed ? 'rgba(75,227,200,0.9)' : 'rgba(11,13,16,0.9)';
+  ctx.lineWidth = t.placed ? 2 : 1.5;
+  ctx.strokeRect(t.x, t.y, t.w, t.h);
+  ctx.restore();
+}
+
+function tryGrabTile(st) {
+  if (!st.point || !puzzle) return;
+  const takenIds = new Set(Object.values(handStates).map(s => s.dragTileId).filter(id => id != null));
+  const candidates = puzzle.tiles.filter(t => !t.placed && !takenIds.has(t.id));
+  for (let i = candidates.length - 1; i >= 0; i--) {
+    const t = candidates[i];
+    if (st.point.x >= t.x && st.point.x <= t.x + t.w &&
+        st.point.y >= t.y && st.point.y <= t.y + t.h) {
+      st.dragTileId = t.id;
+      st.dragOffset = { x: st.point.x - t.x, y: st.point.y - t.y };
+      return;
+    }
+  }
+}
+
+function releaseTile(st) {
+  if (st.dragTileId == null || !puzzle) return;
+  const t = puzzle.tiles.find(tt => tt.id === st.dragTileId);
+  st.dragTileId = null;
+  if (!t) return;
+
+  const targetX = puzzle.boardX + t.col * puzzle.cell;
+  const targetY = puzzle.boardY + t.row * puzzle.cell;
+  const tileCenter = { x: t.x + t.w / 2, y: t.y + t.h / 2 };
+  const targetCenter = { x: targetX + t.w / 2, y: targetY + t.h / 2 };
+
+  if (dist(tileCenter, targetCenter) < puzzle.cell * SNAP_FRACTION) {
+    t.x = targetX;
+    t.y = targetY;
+    t.placed = true;
+    puzzle.solved++;
+    updateProgressText();
+    if (puzzle.solved === puzzle.total) onPuzzleSolved();
+  }
+}
+
+function updateDrag(st) {
+  if (st.dragTileId == null || !st.point || !puzzle) return;
+  const t = puzzle.tiles.find(tt => tt.id === st.dragTileId);
+  if (!t) return;
+  t.x = clamp(st.point.x - st.dragOffset.x, 0, canvas.width - t.w);
+  t.y = clamp(st.point.y - st.dragOffset.y, 0, canvas.height - t.h);
+}
+
+function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+// ============================================================
+// SOLVED → gallery
+// ============================================================
+function onPuzzleSolved() {
+  appState = 'solved';
+  setStatus('done', 'Puzzle completed!');
+  setHint('Nice work! Reset to try another');
+
+  const dataUrl = puzzle.sourceCanvas.toDataURL('image/png');
+  solvedPuzzles.push(dataUrl);
+  addGalleryThumb(dataUrl);
+  galleryCount.textContent = String(solvedPuzzles.length);
+  galleryEmpty.classList.add('hidden');
+  downloadStripBtn.classList.remove('hidden');
+}
+
+function addGalleryThumb(dataUrl) {
+  const img = document.createElement('img');
+  img.src = dataUrl;
+  img.alt = 'Completed puzzle';
+  galleryStrip.appendChild(img);
+}
+
+function updateProgressText() {
+  const solved = puzzle ? puzzle.solved : 0;
+  const total = puzzle ? puzzle.total : GRID_COLS * GRID_ROWS;
+  progressText.textContent = `${solved} / ${total} pieces placed`;
+}
+
+function updateStatusLine(present) {
+  if (appState === 'tracking') {
+    if (present.length >= 2) {
+      setStatus('live', frameGestureActive ? 'Frame detected — hold to capture' : 'Open the frame with both hands');
+    } else {
+      setStatus('live', 'Looking for both hands…');
+    }
+  } else if (appState === 'puzzle') {
+    const dragging = Object.values(handStates).some(s => s.dragTileId != null);
+    setStatus('busy', dragging ? 'Moving piece…' : `Solving — ${puzzle.solved}/${puzzle.total}`);
+  }
+}
+
+// ============================================================
+// RESET
+// ============================================================
+function resetAll() {
+  puzzle = null;
+  handStates = {};
+  frameGestureActive = false;
+  frameHoldStart = null;
+  appState = 'tracking';
+  progressBadge.classList.add('hidden');
+  resetAllBtn.classList.add('hidden');
+  stripCompletedMsg.classList.add('hidden');
+  setHint('Form a rectangle with both hands (thumb + index) and hold to capture');
+  setStatus('live', 'Looking for both hands…');
+}
+resetAllBtn.addEventListener('click', resetAll);
+
+// ============================================================
+// GALLERY STRIP DOWNLOAD
+// ============================================================
+downloadStripBtn.addEventListener('click', () => {
+  if (solvedPuzzles.length === 0) return;
+  const thumb = 220;
+  const cols = Math.min(3, solvedPuzzles.length);
+  const rows = Math.ceil(solvedPuzzles.length / cols);
+  const off = document.createElement('canvas');
+  off.width = cols * thumb;
+  off.height = rows * thumb;
+  const octx = off.getContext('2d');
+  octx.fillStyle = '#0b0d10';
+  octx.fillRect(0, 0, off.width, off.height);
+
+  let loaded = 0;
+  solvedPuzzles.forEach((src, i) => {
+    const img = new Image();
+    img.onload = () => {
+      const c = i % cols, r = Math.floor(i / cols);
+      octx.drawImage(img, c * thumb, r * thumb, thumb, thumb);
+      loaded++;
+      if (loaded === solvedPuzzles.length) finishDownload(off);
+    };
+    img.src = src;
+  });
+});
+
+function finishDownload(off) {
+  const link = document.createElement('a');
+  link.download = 'puzzle-cam-strip.png';
+  link.href = off.toDataURL('image/png');
+  link.click();
+  stripCompletedMsg.classList.remove('hidden');
+  setTimeout(() => stripCompletedMsg.classList.add('hidden'), 2500);
+}
+
+// ============================================================
+// BOOT
+// ============================================================
+window.addEventListener('load', () => {
+  resizeCanvas();
+  startCamera();
+});
+
+  </script>
+</body>
+</html>
